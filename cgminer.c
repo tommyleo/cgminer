@@ -3656,7 +3656,7 @@ static void curses_print_status(void)
 			pool->has_gbt ? "GBT" : "LP", pool->rpc_user);
 	}
 	wclrtoeol(statuswin);
-	cg_mvwprintw(statuswin, 5, 0, " Block: %s...  Diff:%s  Started: %s  Best share: %s   ",
+	cg_mvwprintw(statuswin, 5, 0, " Block: %s...  Diff:%s  Started: %s  (T)Best share: %s   ",
 		     prev_block, block_diff, blocktime, best_share);
 	mvwhline(statuswin, 6, 0, '-', linewidth);
 	mvwhline(statuswin, statusy - 1, 0, '-', linewidth);
@@ -3952,8 +3952,7 @@ static void restart_threads(void);
 /* Theoretically threads could race when modifying accepted and
  * rejected values but the chance of two submits completing at the
  * same time is zero so there is no point adding extra locking */
-static void
-share_result(json_t *val, json_t *res, json_t *err, const struct work *work,
+static void share_result(json_t *val, json_t *res, json_t *err, const struct work *work,
 	     char *hashshow, bool resubmit, char *worktime)
 {
 	struct pool *pool = work->pool;
@@ -4163,7 +4162,7 @@ static bool submit_upstream_work(struct work *work, CURL *curl, bool resubmit)
 	strcat(gbt_block, varint); // +8 max
 	strcat(gbt_block, work->coinbase);
 
-	s = cgmalloc(1024);
+	s = cgmalloc(2048);
 	sprintf(s, "{\"id\": 0, \"method\": \"submitblock\", \"params\": [\"%s", gbt_block);
 	/* Has submit/coinbase support */
 	if (!pool->has_gbt) {
@@ -4179,7 +4178,10 @@ static bool submit_upstream_work(struct work *work, CURL *curl, bool resubmit)
 	} else
 		s = realloc_strcat(s, "\"]}");
 	applog(LOG_DEBUG, "DBG: sending %s submit RPC call: %s", pool->rpc_url, s);
+
 	s = realloc_strcat(s, "\n");
+
+	applog(LOG_NOTICE, "(T) RPC call: %s", s);
 
 	cgtime(&tv_submit);
 	/* issue JSON-RPC request */
@@ -7424,7 +7426,7 @@ static bool setup_gbt_solo(CURL *curl, struct pool *pool)
 		applog(LOG_ERR, "Bitcoin address %s is NOT valid", opt_btc_address);
 		goto out;
 	}
-	applog(LOG_NOTICE, "Solo mining to valid address: %s", opt_btc_address);
+	applog(LOG_NOTICE, "(T)Solo mining to valid address: %s", opt_btc_address);
 	ret = true;
 	address_to_pubkeyhash(pool->script_pubkey, opt_btc_address);
 	hex2bin(scriptsig_header_bin, scriptsig_header, 41);
@@ -8025,8 +8027,11 @@ static void gen_solo_work(struct pool *pool, struct work *work)
 	int i;
 
 	cgtime(&now);
-	if (now.tv_sec - pool->tv_lastwork.tv_sec > 60)
+	/* Tommy if (now.tv_sec - pool->tv_lastwork.tv_sec > 60)*/
+	if (now.tv_sec - pool->tv_lastwork.tv_sec > 600){
+		applog(LOG_NOTICE, "(T)now.tv_sec - pool->tv_lastwork.tv_sec > 600");
 		update_gbt_solo(pool);
+	}
 
 	cg_wlock(&pool->gbt_lock);
 
