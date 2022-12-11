@@ -3375,6 +3375,8 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	}
 
 	pool->nonce2 = 0;
+	//(T)
+	pool->nonce2 = 19650202;
 	pool->n2size = 4;
 	pool->coinbase_len = 41 + ofs + 4 + 1 + 8 + 1 + 25 + witness_txout_len + 4;
 	cg_wunlock(&pool->gbt_lock);
