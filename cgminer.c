@@ -1964,7 +1964,7 @@ static struct opt_table opt_config_table[] = {
 		     "Set GekkoScience miner minimum hash quality, range 0-100"),
 	OPT_WITH_ARG("--gekko-tune-up",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_tune_up,
-		     "Set GekkoScience miner ramping hash threshold, rante 0-99"),
+		     "Set GekkoScience miner ramping hash threshold, range 0-99"),
 	OPT_WITH_ARG("--gekko-wait-factor",
 		     set_float_0_to_500, opt_show_floatval, &opt_gekko_wait_factor,
 		     "Set GekkoScience miner task send wait factor, range 0.01-2.00"),
@@ -3175,12 +3175,13 @@ static unsigned char scriptsig_header_bin[41];
 
 static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 {
-	json_t *transaction_arr, *rules_arr, *coinbase_aux;
+	json_t *transaction_arr, *rules_arr, *coinbaseaux, *coinbaseaux_value;
 	const char *previousblockhash;
 	unsigned char hash_swap[32];
 	struct timeval now;
 	const char *target;
 	uint64_t coinbasevalue;
+	const char *coinbaseaux_key;
 	const char *flags;
 	const char *bits;
 	char header[260];
@@ -3205,11 +3206,12 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	bits = json_string_value(json_object_get(res_val, "bits"));
 	height = json_integer_value(json_object_get(res_val, "height"));
 	coinbasevalue = json_integer_value(json_object_get(res_val, "coinbasevalue"));
-	coinbase_aux = json_object_get(res_val, "coinbaseaux");
-	flags = json_string_value(json_object_get(coinbase_aux, "flags"));
+	coinbaseaux = json_object_get(res_val, "coinbaseaux");
+	//coinbase_aux = json_object_get(res_val, "coinbaseaux");
+	//flags = json_string_value(json_object_get(coinbase_aux, "flags"));
 	default_witness_commitment = json_string_value(json_object_get(res_val, "default_witness_commitment"));
 
-	if (!previousblockhash || !target || !version || !curtime || !bits || !coinbase_aux || !flags) {
+	if (!previousblockhash || !target || !version || !curtime || !bits || !coinbaseaux) {
 		applog(LOG_ERR, "Pool %d JSON failed to decode GBT", pool->pool_no);
 		return false;
 	}
@@ -3287,11 +3289,26 @@ static bool gbt_solo_decode(struct pool *pool, json_t *res_val)
 	/* Put block height at start of template. */
 	ofs += ser_number(pool->scriptsig_base + ofs, height); // max 5
 
+	/* Followed by coinbaseaux */
+	pool->scriptsig_base[ofs++] = 0;
+	json_object_foreach(coinbaseaux, coinbaseaux_key, coinbaseaux_value) {
+		applog(LOG_DEBUG, "coinbaseaux.%s: %s", coinbaseaux_key, json_string_value(coinbaseaux_value));
+
+		len = json_string_length(coinbaseaux_value) / 2;
+		if (pool->scriptsig_base[ofs-1] + len > 32) {
+			applog(LOG_ERR, "Pool %d JSON failed to decode GBT coinbaseaux", pool->pool_no);
+			return false;
+		}
+		hex2bin(pool->scriptsig_base + ofs + pool->scriptsig_base[ofs-1], json_string_value(coinbaseaux_value), len);
+		pool->scriptsig_base[ofs-1] += len;
+	}
+	ofs += pool->scriptsig_base[ofs-1];	
+
 	/* Followed by flags */
-	len = strlen(flags) / 2;
-	pool->scriptsig_base[ofs++] = len;
-	hex2bin(pool->scriptsig_base + ofs, flags, len);
-	ofs += len;
+	// len = strlen(flags) / 2;
+	// pool->scriptsig_base[ofs++] = len;
+	// hex2bin(pool->scriptsig_base + ofs, flags, len);
+	// ofs += len;
 
 	/* Followed by timestamp */
 	cgtime(&now);
@@ -3976,7 +3993,7 @@ static void share_result(json_t *val, json_t *res, json_t *err, const struct wor
 		cgpu->last_share_diff = work->work_difficulty;
 		pool->last_share_time = cgpu->last_share_pool_time;
 		pool->last_share_diff = work->work_difficulty;
-		applog(LOG_DEBUG, "PROOF OF WORK RESULT: true (yay!!!)");
+		applog(LOG_NOTICE, "PROOF OF WORK RESULT: true (yay!!!)");
 		if (!QUIET) {
 			if (total_pools > 1)
 				applog(LOG_NOTICE, "Accepted %s %s %d pool %d %s%s",
@@ -8027,9 +8044,9 @@ static void gen_solo_work(struct pool *pool, struct work *work)
 	int i;
 
 	cgtime(&now);
-	/* Tommy if (now.tv_sec - pool->tv_lastwork.tv_sec > 60)*/
-	if (now.tv_sec - pool->tv_lastwork.tv_sec > 600){
-		applog(LOG_NOTICE, "(T)now.tv_sec - pool->tv_lastwork.tv_sec > 600");
+
+	if (now.tv_sec - pool->tv_lastwork.tv_sec > 60){
+		applog(LOG_NOTICE, "(T)now.tv_sec - pool->tv_lastwork.tv_sec > 60  (update_gbt_solo)");
 		update_gbt_solo(pool);
 	}
 
@@ -8090,7 +8107,9 @@ static void gen_solo_work(struct pool *pool, struct work *work)
 	local_work++;
 	work->gbt = true;
 	work->pool = pool;
-	work->nonce = 0;
+	//work->nonce = 0;
+	//(T)
+	work->nonce = 19650202;
 	work->longpoll = false;
 	work->getwork_mode = GETWORK_MODE_SOLO;
 	work->work_block = work_block;
@@ -8445,7 +8464,9 @@ static void hash_sole_work(struct thr_info *mythr)
 		cgpu->new_work = true;
 
 		cgtime(&tv_workstart);
-		work->nonce = 0;
+		//work->nonce = 0;
+		//(T)
+		work->nonce = 19650202;
 		cgpu->max_hashes = 0;
 		if (!drv->prepare_work(mythr, work)) {
 			applog(LOG_ERR, "work prepare failed, exiting "
